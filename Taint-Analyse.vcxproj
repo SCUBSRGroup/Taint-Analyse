@@ -72,6 +72,8 @@
     <IntDir>$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
     <GenerateManifest>false</GenerateManifest>
+    <IncludePath>F:\pin-2.10-45467-msvc10-ia32_intel64-windows\source\tools\TaintAnalyse\include;$(IncludePath)</IncludePath>
+    <LibraryPath>F:\pin-2.10-45467-msvc10-ia32_intel64-windows\source\tools\TaintAnalyse\bin;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(ProjectDir)$(Platform)\$(Configuration)\</OutDir>
@@ -112,7 +114,7 @@
     </ClCompile>
     <Link>
       <AdditionalOptions>/export:main /SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>pin.lib;libxed.lib;libcpmt.lib;libcmt.lib;pinvm.lib;kernel32.lib;ntdll-32.lib</AdditionalDependencies>
+      <AdditionalDependencies>pin.lib;libxed.lib;libcpmt.lib;libcmt.lib;pinvm.lib;kernel32.lib;ntdll-32.lib;libz3.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>..\..\..\ia32\lib;..\..\..\ia32\lib-ext;..\..\..\extras\xed2-ia32\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <GenerateDebugInformation>true</GenerateDebugInformation>

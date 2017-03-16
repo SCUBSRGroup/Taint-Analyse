@@ -2,6 +2,9 @@
 #include <fstream>
 #include "pin.H"
 
+#include "z3++.h"
+
+
 #include <cassert>
 #include <iostream>
 #include <fstream>
@@ -24,6 +27,187 @@
 #pragma warning( disable : 4551 )
 #pragma warning( disable : 4700 )
 #pragma warning( disable : 4715 )   
+
+
+
+std::list< std::pair<UINT64, std::string> > constraintList;
+
+
+z3::context *z3Context;
+z3::expr *z3Var;
+z3::solver *z3solver;
+z3::expr *z3Equation;
+z3::model *z3Model;
+
+
+static char goodSerial[32] = { 0 };
+static unsigned int offsetSerial;
+
+
+
+#define ID_EAX 0
+#define ID_EBX 1
+#define ID_ECX 2
+#define ID_EDX 3
+#define ID_EDI 4
+#define ID_ESI 5
+
+
+static UINT32 regID[] =
+{
+	-1,/*ID_RAX*/
+	-1,/*ID_RBX*/
+	-1,/*ID_RCX*/
+	-1,/*ID_RDX*/
+	-1,/*ID_RDI*/
+	-1/*ID_RSI*/
+};
+
+
+
+
+UINT32 getRegID(REG reg)
+{
+	switch (reg)
+	{
+	case  REG_EAX:
+	case REG_AX:
+	case REG_AH:
+	case REG_AL:
+		return regID[ID_EAX];
+	case REG_EBX:
+	case REG_BX:
+	case REG_BH:
+	case REG_BL:
+		return regID[ID_EBX];
+	case REG_ECX:
+	case REG_CX:
+	case REG_CH:
+	case REG_CL:
+		return regID[ID_ECX];
+	case REG_EDX:
+	case REG_DX:
+	case REG_DH:
+	case REG_DL:
+		return regID[ID_EDX];
+	//case REG_RDI:
+	case REG_EDI:
+	case REG_DI:
+	//case REG_DL:
+		return regID[ID_EDI];
+
+	//case REG_RSI:
+	case REG_ESI:
+	case REG_SI:
+	//case REG_SH:
+	//case REG_SL:
+		return regID[ID_ESI];
+	default:
+		return -1;
+	}
+}
+
+VOID setRegID(REG reg, UINT64 id)
+{
+	switch (reg) {
+	//case REG_RAX:
+	case REG_EAX:
+	case REG_AX:
+	case REG_AH:
+	case REG_AL:
+		regID[ID_EAX] = id;
+		break;
+
+//	case REG_RBX:
+	case REG_EBX:
+	case REG_BX:
+	case REG_BH:
+	case REG_BL:
+		regID[ID_EBX] = id;
+		break;
+
+	//case REG_ECX:
+	case REG_ECX:
+	case REG_CX:
+	case REG_CH:
+	case REG_CL:
+		regID[ID_ECX] = id;
+		break;
+
+	//case REG_RDX:
+	case REG_EDX:
+	case REG_DX:
+	case REG_DH:
+	case REG_DL:
+		regID[ID_EDX] = id;
+		break;
+
+	//case REG_RDI:
+	case REG_EDI:
+	case REG_DI:
+	//case REG_DIL:
+		regID[ID_EDI] = id;
+		break;
+
+	//case REG_RSI:
+	case REG_ESI:
+	case REG_SI:
+	//case REG_SIL:
+		regID[ID_ESI] = id;
+		break;
+
+	default:
+		break;
+	}
+}
+
+REG getHighReg(REG reg)
+{
+	switch (reg) {
+	//case REG_RAX:
+	case REG_EAX:
+	case REG_AX:
+	case REG_AH:
+	case REG_AL:
+		return REG_EAX;
+
+	//case REG_RBX:
+	case REG_EBX:
+	case REG_BX:
+	case REG_BH:
+	case REG_BL:
+		return REG_EBX;
+
+	//case REG_RCX:
+	case REG_ECX:
+	case REG_CX:
+	case REG_CH:
+	case REG_CL:
+		return REG_ECX;
+
+	//case REG_RDX:
+	case REG_EDX:
+	case REG_DX:
+	case REG_DH:
+	case REG_DL:
+		return REG_EDX;
+
+	//case REG_RDI:
+	case REG_EDI:
+	case REG_DI:
+	//case REG_DIL:
+		return REG_EDI;
+
+	//case REG_RSI:
+	case REG_ESI:
+	case REG_SI:
+	//case REG_SIL:
+		return REG_ESI;
+
+	default:
+		return REG_AL; /* hack exception */
+	}
+}
 
 
 
@@ -121,237 +305,6 @@ BOOL g_blogvexir = FALSE;
 
 
 void Instruction(INS ins,VOID *v);
-
-/************************
-extern "C" 	Dep depaddr8[MAX_DEP];
-extern "C" 	UInt depaddr8_number;
-extern "C" 	Dep depaddr32[MAX_DEP];
-extern "C" 	UInt depaddr32_number;
-
-
-RegFrame *GetRegFrame(CONTEXT* ctx)
-{
-RegFrame *rf = new RegFrame;
-
-if (rf == NULL) return NULL;
-memset(rf, 0, sizeof(RegFrame));
-
-#define GET_REG(a1, a2) a1 = PIN_GetContextReg(ctx, a2)
-
-GET_REG(rf->eax, REG_EAX);
-GET_REG(rf->ebx, REG_EBX);
-GET_REG(rf->ecx, REG_ECX);
-GET_REG(rf->edx, REG_EDX);
-GET_REG(rf->esi, REG_ESI);
-GET_REG(rf->edi, REG_EDI);
-GET_REG(rf->esp, REG_ESP);
-GET_REG(rf->ebp, REG_EBP);
-GET_REG(rf->eip, REG_EIP);
-GET_REG(rf->eflags, REG_EFLAGS);
-
-return rf;
-}
-
-uint32_t GetRegByPtr(uint32_t ptr, RegFrame& rf)
-{
-map<ADDRINT, RegFrame*>::const_iterator it;
-it = rfs.find(ptr);
-if (it != rfs.end())
-{
-#define ASSIGN_REGFRAME(t) rf.t = it->second->t
-
-ASSIGN_REGFRAME(eax);
-ASSIGN_REGFRAME(ebx);
-ASSIGN_REGFRAME(ecx);
-ASSIGN_REGFRAME(edx);
-ASSIGN_REGFRAME(esi);
-ASSIGN_REGFRAME(edi);
-ASSIGN_REGFRAME(esp);
-ASSIGN_REGFRAME(ebp);
-ASSIGN_REGFRAME(eip);
-ASSIGN_REGFRAME(eflags);
-return 1;
-}
-else
-{
-return 0;
-}
-}
-*******/
-/*****************
-void Translate2Vexir(ADDRINT ptr)
-{
-VexArch guest = VexArchX86;
-translate_init();
-IRSB *vex_ir = translate_insn(guest, (unsigned char*)ptr, ptr);
-
-}
-
-void GetTakenFlag(BOOL taken)
-{
-g_branchistaken = taken;
-}
-VOID BeforInsnRd(ADDRINT ptr, CONTEXT* ctx, BOOL taken, ADDRINT memrdptr)
-{
-if (TaintStart <= ptr && ptr <= TaintEnd)
-{
-//LlOutFile << hex << ptr << " : " << INS_Disassemble(ins) << endl;
-
-RegFrame *rf = GetRegFrame(ctx);
-if (rf != NULL)
-{
-rfs.insert(std::pair<ADDRINT, RegFrame*>(rf->eip, rf));
-}
-
-g_memreadptr = memrdptr;
-GetTakenFlag(taken);
-Translate2Vexir(ptr);
-//ppIRSB(vex_ir);
-
-}
-}
-
-VOID BeforInsnWt(ADDRINT ptr, CONTEXT* ctx, BOOL taken, ADDRINT memwtptr)
-{
-if (TaintStart <= ptr && ptr <= TaintEnd)
-{
-//LlOutFile << hex << ptr << " : " << INS_Disassemble(ins) << endl;
-
-RegFrame *rf = GetRegFrame(ctx);
-if (rf != NULL)
-{
-rfs.insert(std::pair<ADDRINT, RegFrame*>(rf->eip, rf));
-}
-
-g_memwriteptr = memwtptr;
-GetTakenFlag(taken);
-Translate2Vexir(ptr);
-//ppIRSB(vex_ir);
-
-}
-}
-VOID BeforInsnRdWt(ADDRINT ptr, CONTEXT* ctx, BOOL taken, ADDRINT memrdptr, ADDRINT memwtptr)
-{
-if (TaintStart <= ptr && ptr <= TaintEnd)
-{
-//LlOutFile << hex << ptr << " : " << INS_Disassemble(ins) << endl;
-
-RegFrame *rf = GetRegFrame(ctx);
-if (rf != NULL)
-{
-rfs.insert(std::pair<ADDRINT, RegFrame*>(rf->eip, rf));
-}
-
-g_memreadptr = memrdptr;
-g_memwriteptr = memwtptr;
-GetTakenFlag(taken);
-Translate2Vexir(ptr);
-//ppIRSB(vex_ir);
-
-}
-}
-
-VOID BeforInsn(ADDRINT ptr, CONTEXT* ctx, BOOL taken)
-{
-if (TaintStart <= ptr && ptr <= TaintEnd)
-{
-//LlOutFile << hex << ptr << " : " << INS_Disassemble(ins) << endl;
-
-RegFrame *rf = GetRegFrame(ctx);
-if (rf != NULL)
-{
-rfs.insert(std::pair<ADDRINT, RegFrame*>(rf->eip, rf));
-}
-GetTakenFlag(taken);
-Translate2Vexir(ptr);
-//ppIRSB(vex_ir);
-
-}
-}
-VOID InstrBlock(BBL bbl)
-{
-for (INS ins = BBL_InsHead(bbl); INS_Valid(ins); ins = INS_Next(ins))
-{
-
-if (TaintStart <= INS_Address(ins) && INS_Address(ins) <= TaintEnd)
-{
-if (LogAsm.Value())
-{
-LlOutFile << hex << INS_Address(ins) << " : " << INS_Disassemble(ins) << endl;
-}
-
-if (INS_IsMemoryRead(ins) && INS_IsMemoryWrite(ins))
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsnRdWt, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_MEMORYREAD_EA, IARG_MEMORYWRITE_EA, IARG_END);
-}
-else if (INS_IsMemoryRead(ins))
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsnRd, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_MEMORYREAD_EA, IARG_END);
-}
-else if (INS_IsMemoryWrite(ins))
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsnWt, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_MEMORYWRITE_EA, IARG_END);
-}
-else
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsn, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_END);
-}
-}
-
-}
-
-}
-
-****** /
-VOID InstrTrace(TRACE trace, VOID *v)
-{
-/* Decide if we want to log this trace by examining the entrance address. */
-//ADDRINT addr = TRACE_Address(trace);
-//if (TaintStart <= addr && addr <= TaintEnd)
-//	for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl))
-//	{
-//		InstrBlock(bbl);
-//	}
-
-//}
-// Pin calls this function every time a new instruction is encountered
-
-/*********************
-VOID Instruction(INS ins, VOID *v)
-{
-// Insert a call to docount before every instruction, no arguments are passed
-if (LogAsm.Value())
-{
-if (TaintStart <= INS_Address(ins) && INS_Address(ins) <= TaintEnd)
-{
-LlOutFile << hex << INS_Address(ins) << " : " << INS_Disassemble(ins) << endl;
-}
-}
-
-if (INS_IsMemoryRead(ins) && INS_IsMemoryWrite(ins))
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsnRdWt, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_MEMORYREAD_EA, IARG_MEMORYWRITE_EA, IARG_END);
-}
-else if (INS_IsMemoryRead(ins))
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsnRd, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_MEMORYREAD_EA, IARG_END);
-}
-else if (INS_IsMemoryWrite(ins))
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsnWt, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_MEMORYWRITE_EA, IARG_END);
-}
-else
-{
-INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)BeforInsn, IARG_INST_PTR, IARG_CONTEXT, IARG_BRANCH_TAKEN, IARG_END);
-}
-
-
-}
-*******/
-
-
-
-
 
 
 
@@ -456,7 +409,7 @@ BOOL CloseHandleWrapper(CONTEXT *ctx, AFUNPTR fp, THREADID tid,
 	HANDLE hObject)
 {
 	BOOL ret;
-
+	//z这个地方添加相关注释。
 	if (hObject == g_inputfileHandle)
 	{
 		cerr << "[+] Close Input File..." << endl;
@@ -832,27 +785,6 @@ VOID removeMemTainted(UINT32 addr)
 	//list<UINT32>::iterator kz;
 	addressTainted.remove(addr);
 	std::cout << std::hex << "\t\t\t" << addr << " is now freed" << std::endl;
-	//if (TaintLength <= 0)
-	//	return;
-	//for (unsigned int i = 0; i < TaintLength; i++)
-	//{
-	//	//addressTainted.remove(addr + i);
-	//	//std::cout << std::hex << "\t\t\t" << addr << " is now freed" << std::endl;
-	//	for (kz = addressTainted.begin(); kz != addressTainted.end(); kz++)
-	//	{
-	//		//UINT32 ky = *kz;
-	//		//std::cout << std::hex << *kz << std::endl;
-	//		if ((UINT32)(addr+i) == *kz)//释放掉对应的空间
-	//		{
-	//			addressTainted.remove((UINT32)(addr+i));
-	//			std::cout << std::hex << "\t\t\t" << addr << " is now freed" << std::endl;
-	//			break;
-
-	//		}
-	//	}
-	//	if (kz == addressTainted.end())
-	//		break;
-	//}
 	
 }
 
@@ -861,101 +793,43 @@ VOID addMemTainted(UINT32 addr)
 {
 	addressTainted.push_back(addr);
 	std::cout << std::hex << "\t\t\t" << addr << " is now tainted" << std::endl;
-	/*if (TaintLength > 0)
-	{
-		for (unsigned int i = 0; i < TaintLength; i++)
-		{
-			addressTainted.push_back((UINT32)(addr+i));
-			std::cout << std::hex << "\t\t\t" << addr << " is now tainted" << std::endl;
-		}
-	}*/
-	
+
 }
 
 
 //进行污染传播的数据
-void ReadMem(ADDRINT address,REG reg_0,UINT32 OperandCount,UINT32 memop,UINT32 memorySize)
+void ReadMem(ADDRINT address, std::string &Inst,REG reg_0,UINT32 OperandCount,UINT32 memop,UINT32 memorySize)
 {
 	list<UINT32>::iterator k;
 	list<struct range>::iterator i;
 	list<struct Inst>::iterator j;
 	UINT32 addr = memop;
 	string inst;
-	//string kinst1 = INS_Disassemble(ins);
 	REG reg_r;
-	/******
-	if (INS_OperandCount(ins) != 2)
-		return;
-		***/
 	if (OperandCount != 2)
 		return;
-	//reg_r = INS_OperandReg(ins, 0);
 	reg_r = reg_0;
 
 	for (k = addressTainted.begin(); k != addressTainted.end(); k++)
 	{
 		if (addr == *k)
 		{
-		/*	for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-			{
-				if (j->key == address)
-				{
-					inst = j->inst;
-				}
-			}*/
-			SearchInst(g_InstList, inst, address);
-			std::cout << std::hex << "[READ in " << addr << "]\t" << address<< ": " << inst << std::endl;
+			std::cout << std::hex << "[READ in " << addr << "]\t" << address<< ": " << Inst << std::endl;
 			taintReg(reg_r);
 			return;
 
 		}
 	}
-	/******************
-	list<struct range>::iterator it = find(g_InstList.begin(),g_InstList.end(),)
-	{
-
-	}; 
-	****/
-	//string uuk = INS_Disassemble(ins);
 	if (checkAlreadyRegTainted(reg_r)) {
-	/*	for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-		{
-			if (j->key == address)
-			{
-				inst = j->inst;
-			}
-		}*/
-		SearchInst(g_InstList, inst, address);
-		std::cout << std::hex << "[READ in " << addr << "]\t" <<address << ": " << inst << std::endl;
+		std::cout << std::hex << "[READ in " << addr << "]\t" <<address << ": " << Inst << std::endl;
 		removeRegTainted(reg_r);
 	}
-	/**************
-	for (i = g_bytesTainted.begin(); i != g_bytesTainted.end(); i++)
-	{
-		//PIN_SafeCopy(opcode, (VOID *)insAddr, insSize);
-		//disamble(opcode, InstStr);
-		for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-		{
-			//if (j->key == insAddr)
-			//{
-			//	inst = j->inst;
-			//}
-		}
-		if (addr >= i->start && addr < i->end)
-		{
-			std::cout << std::hex << "[READ in " << addr << "]\t" << INS_Address(ins)
-				<< ": "<<INS_Disassemble(ins)<< std::endl;
-		}
-	}
-	**************/
-	//free(insDis);
-	//insDis = NULL;
 }
 
 //如果涉及到内存写操作，则需要关注内存的写的内容。
 
 //void WriteMem(INS ins, UINT32 memop)
-void WriteMem(ADDRINT insaddr,UINT32 opCount,REG reg_r,UINT32 memory1,UINT32 memorySize)
+void WriteMem(ADDRINT insaddr, std::string &Inst,UINT32 opCount,REG reg_r,UINT32 memory1,UINT32 memorySize)
 {
 	//这个地方的写内存操作要注意。
 	list<struct range>::iterator i;
@@ -983,8 +857,8 @@ void WriteMem(ADDRINT insaddr,UINT32 opCount,REG reg_r,UINT32 memory1,UINT32 mem
 		if (k != addressTainted.end())
 		{
 			//找到元素，开始进一步操作
-			SearchInst(g_InstList, inst, insaddr);
-			std::cout << std::hex << "[WRITE in " << (addr+i) << "]\t" << insaddr << ": " << inst << std::endl;
+			//SearchInst(g_InstList, inst, insaddr);
+			std::cout << std::hex << "[WRITE in " << (addr+i) << "]\t" << insaddr << ": " << Inst << std::endl;
 			if (!REG_valid(reg_r) || (!checkAlreadyRegTainted(reg_r)))
 			{
 				//针对两种情况，要么包含有寄存器，要么不包含寄存器
@@ -996,100 +870,35 @@ void WriteMem(ADDRINT insaddr,UINT32 opCount,REG reg_r,UINT32 memory1,UINT32 mem
 			//没有找到元素，表示没有被污染，这时需要判断寄存器是否被污染
 			if (checkAlreadyRegTainted(reg_r))
 			{
-				SearchInst(g_InstList, inst, insaddr);
-				std::cout << std::hex << "[WRITE in " << addr+i << "]\t" << insaddr << ": " << inst << std::endl;
+				//SearchInst(g_InstList, inst, insaddr);
+				std::cout << std::hex << "[WRITE in " << addr+i << "]\t" << insaddr << ": " << Inst << std::endl;
 				addMemTainted(addr+i);
 			}
 		}
 	}
 	
-	//for (k = addressTainted.begin(); k != addressTainted.end(); k++)
-	//{
-	//	if (addr == *k)
-	//	{
-	//		SearchInst(g_InstList, inst, insaddr);
-	//		std::cout << std::hex << "[WRITE in " << addr << "]\t" << insaddr << ": " << inst << std::endl;
-	//		if (!REG_valid(reg_r) || !checkAlreadyRegTainted(reg_r))
-	//			removeMemTainted(addr, memorySize);
-	//		return;
-	//	}
-	//		
-	//}
-	//如果寄存器已经被污染，则我们需要将目标地址进行污染。
-	//if (checkAlreadyRegTainted(reg_r)) {
-	//	/********
-	//	for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-	//	{
-	//		if (j->key == insaddr)
-	//		{
-	//			inst = j->inst;
-	//		}
-	//	}
-	//	*************/
-	//	SearchInst(g_InstList, inst, insaddr);
-	//	std::cout << std::hex << "[WRITE in " << addr << "]\t" << insaddr << ": " << inst << std::endl;
-	//	addMemTainted(addr, memorySize);
-	//}
-
-	/******************************************
-	inst = INS_Disassemble(ins);
-	for (i = g_bytesTainted.begin(); i != g_bytesTainted.end(); ++i) {
-		for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-		{
-			//if (j->key == insAddr)
-			//{
-			//	inst = j->inst;
-			//}
-		}
-		if (addr >= i->start && addr < i->end) {
-			std::cout << std::hex << "[WRITE in " << addr << "]\t" << INS_Address(ins) << ": " << inst << std::endl;
-		}
-	}
-	**************/
-	/*******/
 }
 
 
-VOID spreadRegTaint(ADDRINT address,UINT32 opCount,REG reg_r,REG reg_w)
+VOID spreadRegTaint(ADDRINT address, std::string &Inst,UINT32 opCount,REG reg_r,REG reg_w)
 {
 	//寄存器只有寄存器是目标寄存器时候才能够被污染，否需要被考虑。
-	//REG reg_r, reg_w;
-
-	//if (INS_OperandCount(ins) != 2)
 	if (opCount != 2)
 		return;
-	//return;
-	string inst;
 	list<struct Inst>::iterator j;
-
-
 	string k1 = REG_StringShort(reg_r);
 	string k2 = REG_StringShort(reg_w);
 	//如果目标寄存器是已经被污染过得，并且写入寄存器未被污染，则需要将该寄存器进行进一步的污染。
 	if (REG_valid(reg_w)) {
 		if (checkAlreadyRegTainted(reg_w) && (!REG_valid(reg_r) || !checkAlreadyRegTainted(reg_r))) {
-			//for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-			//{
-			//	if (j->key == address)
-			//	{
-			//		inst = j->inst;
-			//	}
-			//}
-			SearchInst(g_InstList, inst, address);
-			std::cout << "[SPREAD]\t\t" << address << ": " << inst << std::endl;
+			//SearchInst(g_InstList, inst, address);
+			std::cout << "[SPREAD]\t\t" << address << ": " << Inst << std::endl;
 			std::cout << "\t\t\toutput: " << REG_StringShort(reg_w) << " | input: " << (REG_valid(reg_r) ? REG_StringShort(reg_r) : "constant") << std::endl;
 			removeRegTainted(reg_w);
 		}
 		else if (!checkAlreadyRegTainted(reg_w) && checkAlreadyRegTainted(reg_r)) {
-		/*	for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-			{
-				if (j->key == address)
-				{
-					inst = j->inst;
-				}
-			}*/
-			SearchInst(g_InstList, inst, address);
-			std::cout << "[SPREAD]\t\t" << address << ": " << inst << std::endl;
+			//SearchInst(g_InstList, inst, address);
+			std::cout << "[SPREAD]\t\t" << address << ": " << Inst << std::endl;
 			std::cout << "\t\t\toutput: " << REG_StringShort(reg_w) << " | input: " << REG_StringShort(reg_r) << std::endl;
 			taintReg(reg_w);
 		}
@@ -1101,7 +910,7 @@ VOID spreadRegTaint(ADDRINT address,UINT32 opCount,REG reg_r,REG reg_w)
 
 //跟踪使用污点的指令，将这些指令打印出来
 
-void followData(ADDRINT address, REG reg)
+void followData(ADDRINT address, std::string &Inst,REG reg)
 {
 	string inst;
 	list<struct Inst>::iterator j;
@@ -1110,18 +919,10 @@ void followData(ADDRINT address, REG reg)
 		return;
 	if (checkAlreadyRegTainted(reg))
 	{
-	/*	for (j = g_InstList.begin(); j != g_InstList.end(); j++)
-		{
-			if (j->key == address)
-			{
-				inst = j->inst;
-			}
-		}*/
-		SearchInst(g_InstList, inst, address);
-		std::cout << "[FOLLOW]\t\t" << address << ":"<<inst << std::endl;
+		std::cout << "[FOLLOW]\t\t" << address << ":"<< Inst << std::endl;
 	}
 }
-void MemoryMove(ADDRINT insaddr, UINT32 opCount, REG reg_r, UINT32 memory1,UINT32 memory2, UINT32 memorySize)
+void MemoryMove(ADDRINT insaddr, std::string &Inst,UINT32 opCount, REG reg_r, UINT32 memory1,UINT32 memory2, UINT32 memorySize)
 {
 	//总共对这种指令的漏洞进行操作
 	string inst;
@@ -1151,35 +952,6 @@ void MemoryMove(ADDRINT insaddr, UINT32 opCount, REG reg_r, UINT32 memory1,UINT3
 				removeMemTainted(memory1+i);
 			}
 		}
-		//for (k = addressTainted.begin(); k != addressTainted.end(); k++)
-		//{
-		//	if ((memory2 + i) == *k)//如果源被污染了，则应该进一步操作呢
-		//	{
-		//		SearchInst(g_InstList, inst, insaddr);
-		//		std::cout << std::hex << "[Read in " << (memory2 + i) << "]\t" << insaddr << ": " << inst << std::endl;
-		//		addMemTainted(memory1);
-		//		//if (!REG_valid(reg_r) || !checkAlreadyRegTainted(reg_r))
-		//			//removeMemTainted(memory2 + i, 1);
-		//		break;
-		//	}
-		//}
-		////判断目的地址是否被污染，污染覆盖,说明源是没有被覆盖的，那么应该判断源是否被污染，如果是则应该被覆盖掉
-		//if ((k == addressTainted.end()) && ((memory2 + i) != *k))
-		//{
-		//	for (k = addressTainted.begin(); k != addressTainted.end(); k++)
-		//	{
-		//		if ((memory1 + i) == *k)//如果源被污染了，则应该进一步操作呢
-		//		{
-		//			SearchInst(g_InstList, inst, insaddr);
-		//			std::cout << std::hex << "[Write in " << (memory2 + i) << "]\t" << insaddr << ": " << inst << std::endl;
-		//			removeMemTainted(memory1);
-		//			//if (!REG_valid(reg_r) || !checkAlreadyRegTainted(reg_r))
-		//			//removeMemTainted(memory2 + i, 1);
-		//			break;
-		//		}
-		//	}
-
-		//}
 	}
 	
 
@@ -1205,18 +977,7 @@ void Instruction(INS ins,VOID *v)
 	std::map<ADDRINT, string>mapInst;
 	ADDRINT insAddress = INS_Address(ins);
 	UINT32 insSize = INS_Size(ins);
-	//instdis.key = insAddress;
-	//instdis.inst = INS_Disassemble(ins);
-	//std::map<ADDRINT, string>mapInst = pair<ADDRINT, string>(insAddress, INS_Disassemble(ins));
-	int temp = 0;
-	//fprintf(fp, "%08x:%s\n", insAddress, instdis.inst.c_str());
-	//if (insAddress == 0x401044)
-	//	int yzkk = 0;
-	//int ret = instdis.inst.compare("mov byte ptr [eax+0x14], 0x73");
-	//if (ret == 0)
-	//{
-	//	int zzz = 9;
-	//}
+	/******************
 	//int ret2 = instdis.inst.compare("rep stosd dword ptr [edi]");
 	//if (ret2 == 0 && insAddress<0x70000000)
 	//{
@@ -1227,35 +988,16 @@ void Instruction(INS ins,VOID *v)
 	//{
 	//	temp = 1;
 	//}
-	//int ret1 = instdis.inst.compare("mov al, byte ptr [esi]");
-	//if (ret1 == 0)
-	//{
-	//	int zzk = 9;
-	//}
-	
-	/************************
-	if (INS_OperandCount(ins) > 1 && INS_MemoryOperandIsWritten(ins, 0))
-	{
-		printf("memory operator\n");
-		INS_InsertCall(ins,
-			IPOINT_BEFORE, (AFUNPTR)RecoredMemOpera,
-			IARG_INST_PTR,
-			IARG_MEMORYOP_EA, 0,
-			IARG_END);
-	}
-
-
-
 	*******************/
 
 	if (INS_OperandCount(ins)>1 && INS_MemoryOperandIsRead(ins, 0) && INS_OperandIsReg(ins, 0))
 	{
 		//这个地方将数据存放起来。
-		
-		g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
+		//g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
 		INS_InsertCall(
 			ins, IPOINT_BEFORE, (AFUNPTR)ReadMem,
 			IARG_ADDRINT,INS_Address(ins),
+			IARG_PTR,new std::string(INS_Disassemble(ins)),
 			IARG_ADDRINT, INS_OperandReg(ins, 0),
 			IARG_UINT32,INS_OperandCount(ins),
 			IARG_MEMORYOP_EA, 0,
@@ -1263,20 +1005,9 @@ void Instruction(INS ins,VOID *v)
 			IARG_END);
 		
 	}
-	//else if (instdis.inst.compare("rep movsd dword ptr [edi], dword ptr [esi]"))
-	//{
-		//专门针对此类种类函数进行操作计算
-	//	g_InstList.push_back(instdis);
-
-	//}
 	else if (INS_OperandCount(ins) > 1 && INS_MemoryOperandIsWritten(ins, 0))
 	{
-		g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
-		//string sk1 = INS_Disassemble(ins);
-		//ADDRINT address = INS_Address(ins);
-		//fwrite(sk1.c_str(),sizeof(char),sk1.size(),fp);
-		UINT32 memop1 = INS_MemoryOperandCount(ins);
-		
+		//g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
 		if(!(instdis.inst.compare("rep movsd dword ptr [edi], dword ptr [esi]")) ||
 			!(instdis.inst.compare("rep movsd word ptr [edi], word ptr [esi]")) ||
 			!(instdis.inst.compare("rep movsd byte ptr [edi], byte ptr [esi]")))
@@ -1284,6 +1015,7 @@ void Instruction(INS ins,VOID *v)
 			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)MemoryMove,
 				IARG_ADDRINT, INS_Address(ins),
+				IARG_PTR, new std::string(INS_Disassemble(ins)),
 				IARG_UINT32, INS_OperandCount(ins),
 				IARG_UINT32, INS_OperandReg(ins, 1),
 				IARG_MEMORYOP_EA, 0,
@@ -1296,6 +1028,7 @@ void Instruction(INS ins,VOID *v)
 			INS_InsertCall(
 				ins, IPOINT_BEFORE, (AFUNPTR)WriteMem,
 				IARG_ADDRINT, INS_Address(ins),
+				IARG_PTR, new std::string(INS_Disassemble(ins)),
 				IARG_UINT32, INS_OperandCount(ins),
 				IARG_UINT32, INS_OperandReg(ins, 1),
 				IARG_MEMORYOP_EA, 0,
@@ -1308,10 +1041,11 @@ void Instruction(INS ins,VOID *v)
 	else if (INS_OperandCount(ins) > 1 && INS_OperandIsReg(ins,0))
 	{
 		//每个地方都把数据插入进去。
-		g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
+	//	g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
 		INS_InsertCall(
 			ins, IPOINT_BEFORE, (AFUNPTR)spreadRegTaint,
 			IARG_ADDRINT,INS_Address(ins),
+			IARG_PTR, new std::string(INS_Disassemble(ins)),
 			IARG_UINT32,INS_OperandCount(ins),
 			IARG_UINT32,INS_RegR(ins,0),
 			IARG_UINT32,INS_RegW(ins,0),
@@ -1322,12 +1056,13 @@ void Instruction(INS ins,VOID *v)
 	//对那个operand进行跟踪。
 	if (INS_OperandCount(ins) > 1 && INS_OperandIsReg(ins, 0))
 	{
-		g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
+		//g_InstList.insert(pair<ADDRINT, string>(insAddress, INS_Disassemble(ins)));
 		INS_InsertCall(
 			ins,
 			IPOINT_BEFORE,
 			(AFUNPTR)followData,
 			IARG_ADDRINT, INS_Address(ins),
+			IARG_PTR, new std::string(INS_Disassemble(ins)),
 			IARG_UINT32, INS_RegR(ins, 0),
 			IARG_END);
 	}
@@ -1348,8 +1083,6 @@ VOID ModLoad(IMG img, VOID *v)
 	ADDRINT load_offset = IMG_LoadOffset(img);
 
 	const string &name = IMG_Name(img);
-
-	//cerr << "[+] LOAD IMAGE : " << name << endl;
 	char tempbuf[BUFSIZE];
 	char *tok = NULL;
 	char *lasttok = NULL;
@@ -1651,7 +1384,7 @@ VOID ThreadStart(THREADID threadid, CONTEXT *ctx, INT32 flags, VOID *v)
 }
 INT32 Usage()
 {
-	cerr << "This tool counts the number of dynamic instructions executed" << endl;
+	//cerr << "This tool counts the number of dynamic instructions executed" << endl;
 	cerr << endl << KNOB_BASE::StringKnobSummary() << endl;
 	return -1;
 }
@@ -1665,7 +1398,7 @@ VOID Fini(INT32 code, VOID *v)
 	// 	OutFile << "Count " << icount << endl;
 	// 	OutFile.close();
 	//printf("%16X,%16X\n", ST1, ST2);
-	g_InstList.clear();
+	//g_InstList.clear();
 	printf("The traint address is:%08x\n", *(addressTainted.begin()));
 	if (fp != NULL)
 		fclose(fp);
@@ -1676,13 +1409,10 @@ int main(int argc, char * argv[])
 {
 	// Initialize pin
 	
-
-	//FILE *fp = NULL;
-	fp = fopen("log.txt","w");
+	//fp = fopen("log.txt","w");
 
 
 	PIN_InitSymbols();
-	//argv[0] = TaintFile.Value().c_str();
 	if (PIN_Init(argc, argv)) return Usage();
 
 
@@ -1693,14 +1423,10 @@ int main(int argc, char * argv[])
 	IMG_AddInstrumentFunction(ModLoad, 0);
 
 	PIN_AddThreadStartFunction(ThreadStart, 0);
-
-	//TRACE_AddInstrumentFunction(InstrTrace, 0); //faster than Instruction ?
-
 	taintfiles.clear();
 	g_InstList.clear();//进行数据清理操作
 	mapfiles.clear();
 	views.clear();
-	//rfs.clear();
 	// Register Fini to be called when the application exits
 	PIN_AddFiniFunction(Fini, 0);
 	if (TaintFile.Value() != "")
@@ -1713,18 +1439,10 @@ int main(int argc, char * argv[])
 		printf("g_inputfileHandle : %x\n", g_inputfileHandle);
 		//taintfiles.insert(pair<HANDLE, string>(g_inputfileHandle, InputFile.Value()));
 	}
-
 	cerr << endl;
-
-	//*************************************************
-	//
-	//*************************************************
 	cerr << "[+] Concrete Execution Is Running ......" << endl;
 	// Start the program, never returns
 	PIN_StartProgram();
-
-
-
 	return 0;
 }
 
